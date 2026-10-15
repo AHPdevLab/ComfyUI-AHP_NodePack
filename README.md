@@ -1,140 +1,177 @@
-# ComfyUI-AHP_BatchCropByMask
+# comfyuiAHP_nodepack
 
-**AHP Batch Crop By Mask** crops a batch of images and masks to the object in each mask. Unlike the single-image crop node it's based on, it accepts batches, and it can give you one shared crop size for the whole batch or a separate box for each frame.
+A collection of utility nodes for [ComfyUI](https://github.com/comfyanonymous/ComfyUI), made by AHP. Every node in this pack has the `AHP` prefix, and each node lives in its own file.
 
-- Node name in ComfyUI: **AHP Batch Crop By Mask**
-- Category: `AHP/image`
-- Author: **Ali Haghighat panah**
-- License: MIT (see [LICENSE](LICENSE))
+The first node is the **AHP Folder Picker**. It has a button that opens a native folder dialog, and it outputs the chosen folder path as a plain string with no quotation marks.
 
----
+## Contents
 
-## How it works
+- [Nodes](#nodes)
+- [Installation](#installation)
+- [Using the AHP Folder Picker](#using-the-ahp-folder-picker)
+- [Troubleshooting](#troubleshooting)
+- [Project structure](#project-structure)
+- [Adding a new AHP node](#adding-a-new-ahp-node)
+- [Naming conventions](#naming-conventions)
+- [License](#license)
 
-For each frame, the node:
+## Nodes
 
-1. **Pairs the image and mask.** Frame *i* of the image batch goes with frame *i* of the mask batch. A batch of 1 is reused for every frame of the other input.
-2. **Inverts the mask (optional).** If `invert_mask` is on, the mask becomes `1 − mask`.
-3. **Finds the object.** The `detect` mode decides how the box is found: from all mask pixels, from the largest object, or as the largest rectangle that fits inside the mask.
-4. **Sets the box.** The `box_mode` decides whether all frames share one box or each frame has its own. The reserves add or remove margin, the box is kept inside the canvas, and the size can be rounded up to a multiple.
-5. **Crops.** The image, the mask, and a preview are cut to the box. Any part of the box that falls outside the frame is filled with zeros.
-6. **Stacks the results.** Outputs are returned as batches. In `per_image` mode, smaller crops are padded so the batch has one size.
+| Display name | Node ID | Category | File | Purpose |
+|---|---|---|---|---|
+| AHP Folder Picker | `AHP_FolderPicker` | `AHP/Path` | `nodes/ahp_folder_picker.py` | Pick a folder with a button and output its path as a string |
 
-## Batch behavior
+### AHP Folder Picker
 
-| Image batch | Mask batch | Result |
+**Inputs**
+
+| Name | Type | Widget | Description |
+|---|---|---|---|
+| `folder_path` | STRING | Text field and **Select Folder** button | The folder path. Type or paste it, or click the button to choose a folder. |
+
+**Outputs**
+
+| Name | Type | Description |
 |---|---|---|
-| N | N | Frame *i* uses image *i* and mask *i* |
-| N | 1 | The one mask crops every image |
-| 1 | N | The one image is cropped by each mask |
-| N | M (N ≠ M, neither is 1) | Error: the batch sizes do not match |
+| `folder_path` | STRING | The cleaned folder path. It never contains quotation marks. |
 
-## Using with AHP Separate Masks
+**Behaviour**
 
-1. Connect your image batch to `image`.
-2. Connect `mask` from **AHP Separate Masks** to `mask`, and `frame_index` to `object_frames`.
-3. Set `box_mode` to `per_image`.
-
-Each object is cropped from the image of the frame it came from, and the crops are padded to the same size for batching. Use `box_preview` to check each crop.
-
-Without `object_frames`, the mask batch and image batch must match in size, or one of them must be a single item.
-
-## Mask quality
-
-Mask values are passed through without changes. Nothing is clamped, rounded, or thresholded in the crop, so soft edges and anti-aliased values stay exactly as they were in the input. Detection uses a 0.5 level only to find the box, and that level never touches the output.
-
-## Box modes
-
-| Mode | What you get | When to use it |
-|---|---|---|
-| `union` | One box that covers the object in every frame. All crops are the same size | Video frames or a sequence where the object should stay in the same place |
-| `per_image` | A box for each frame. Crops are padded with zeros to the largest size, top-left aligned | Each frame has its object in a different place or size |
-
-In `per_image` mode, the `crop_box` output has one box per frame. Use the `box_preview` output to check the boxes visually.
-
-## Detection modes
-
-| Mode | Box comes from | Notes |
-|---|---|---|
-| `mask_area` | Every pixel that's part of the mask | Default. Includes small stray pixels |
-| `min_bounding_rect` | The largest connected object | Ignores small separate objects |
-| `max_inscribed_rect` | The largest rectangle that fits completely inside the mask | Good for cropping a clean area without any background. Slower on large images (about 0.15 s for 1024 × 1024) |
-
-## Inputs
-
-### Required
-
-| Input | Default | What it does |
-|---|---|---|
-| `image` | — | Images to crop. One per frame, or a single image |
-| `mask` | — | Masks that define the object. One per frame, or a single mask |
-| `invert_mask` | off | Flips the mask (1 − mask) before detection |
-| `detect` | mask_area | `mask_area`, `min_bounding_rect`, or `max_inscribed_rect` |
-| `box_mode` | union | `union` or `per_image` |
-| `top_reserve` | 20 | Extra pixels above the object. Negative values shrink the box |
-| `bottom_reserve` | 20 | Extra pixels below the object. Negative values shrink the box |
-| `left_reserve` | 20 | Extra pixels to the left of the object. Negative values shrink the box |
-| `right_reserve` | 20 | Extra pixels to the right of the object. Negative values shrink the box |
-| `round_to_multiple` | None | Rounds the crop width and height up to a multiple of 8, 16, 32, 64, 128, 256, or 512, centered |
-
-### Optional
-
-| Input | What it does |
-|---|---|
-| `object_frames` | Connect `frame_index` from AHP Separate Masks. Each mask is cropped from the image of the frame it came from |
-| `crop_box` | A fixed box `(x1, y1, x2, y2)` used for every frame. Skips detection, reserves, and rounding |
-
-## Outputs
-
-| Output | Type | What it contains |
-|---|---|---|
-| `cropped_image` | IMAGE batch | The cropped images. The channel count matches the input |
-| `cropped_mask` | MASK batch | The cropped masks |
-| `crop_box` | BOX | A list of `[x1, y1, x2, y2]` boxes, one per frame. In `union` mode, every entry is the same |
-| `box_preview` | IMAGE batch | The mask for each frame, with the detected object in red and the final crop box in green |
-
-## Differences from the original CropByMask V3
-
-The original node in ComfyUI_LayerStyle handles one image and one mask. This version:
-
-| Area | Original (CropByMask V3) | This version |
-|---|---|---|
-| Batch input | Uses the first mask only | Pairs images and masks frame by frame, with broadcasting for single inputs |
-| Batch output | Images of different sizes can't be stacked | `union` mode gives one size. `per_image` mode pads to the largest |
-| Box per frame | One box | One box per frame, returned as a list |
-| Dependencies | Needs the whole ComfyUI_LayerStyle package (`imagefunc.py`) | Standalone. Only numpy, OpenCV, Pillow, and torch are needed |
-| Largest inscribed rectangle | Tries rectangles between contour points | Histogram-based search over the mask pixels. Finds the largest rectangle fully inside the mask |
-| Empty masks | Returns an unclear box | Falls back to the full frame, with a printed warning |
-| Reserve clamping | Box clamped to the canvas | Same, plus a minimum size of 1 pixel when reserves shrink the box to nothing |
-| Output channels | Always RGBA | Same as the input |
+- Clicking **Select Folder** opens a folder chooser on the machine that runs ComfyUI. Choosing a folder fills in the text field. Cancelling leaves the field as it was.
+- The output is cleaned before it is passed on. Whitespace and quotation marks are removed. This matters on Windows, where "Copy as path" wraps a path in double quotes. Double quotes are removed from everywhere in the path, because Windows does not allow them in names. Single quotes are removed only from the ends, so a folder called `John's photos` keeps its apostrophe.
+- Paths returned by the folder dialog are normalised to your operating system's separators. For example, `C:/Photos/raw` becomes `C:\Photos\raw` on Windows. Typed paths are passed through as you enter them, apart from the quote cleaning.
+- If the path does not exist yet, the node still outputs it and prints a warning in the console. This is useful for output folders that a later node will create.
+- If the field is empty, the node stops with a clear error message: "no folder selected".
 
 ## Installation
 
-Clone into your `ComfyUI/custom_nodes` folder and install the requirements:
+Requirements:
+
+- ComfyUI (a recent version with custom node support)
+- Python 3.10 or newer, which is the Python that ComfyUI uses
+- Tkinter, which ships with the official Python installers on Windows and macOS. On Linux, install it with your package manager, for example `sudo apt install python3-tk`.
+
+### Option 1: Git clone (recommended while developing)
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/YOUR_USERNAME/ComfyUI-AHP_BatchCropByMask.git
-pip install -r ComfyUI-AHP_BatchCropByMask/requirements.txt
+git clone https://github.com/YOUR_GITHUB_USERNAME/comfyuiAHP_nodepack.git
 ```
 
-Restart ComfyUI. Double-click the canvas and search for **AHP Batch Crop By Mask**.
+Restart ComfyUI. The AHP Folder Picker appears in the node menu under **AHP → Path**.
 
-## Running the tests
+### Option 2: Manual copy
+
+1. Download or copy the `comfyuiAHP_nodepack` folder.
+2. Place it inside `ComfyUI/custom_nodes/`.
+3. Restart ComfyUI.
+
+Do not put the `.py` files directly into `custom_nodes/`. The whole `comfyuiAHP_nodepack` folder has to go in, because the node files depend on each other.
+
+### Updating
 
 ```bash
-cd ComfyUI-AHP_BatchCropByMask
-python tests/test_ahp_batch_crop_by_mask.py
+cd ComfyUI/custom_nodes/comfyuiAHP_nodepack
+git pull
 ```
 
-The tests run without ComfyUI.
+Then restart ComfyUI. Browser JavaScript changes may also need a page refresh.
 
-## Credits
+## Using the AHP Folder Picker
 
-- **Author and batch modifications:** Ali Haghighat panah
-- **Original node:** CropByMask V3 from [ComfyUI_LayerStyle](https://github.com/chflame163/ComfyUI_LayerStyle) by chflame163, MIT License
-- **Development assistance:** Claude (Anthropic)
+1. Add the node: double-click the canvas, search for **AHP Folder Picker**, and select it.
+2. Click **Select Folder** and choose a folder in the dialog. The path appears in the field.
+3. Connect the `folder_path` output to any node that takes a string path. For example, it can feed a batch image loader, or a save node that needs a folder.
+4. Queue the workflow as usual.
+
+If you already have a path, you can paste it into the field. Quotation marks around it are removed automatically.
+
+## Troubleshooting
+
+**The Select Folder button does nothing, or shows "Could not open the folder dialog".**
+The dialog is opened on the machine that runs ComfyUI, not in your browser. This matters in these cases:
+
+- *ComfyUI runs on a remote or headless server* (a cloud GPU, RunPod, or a Linux box with no desktop). There is no screen to show the dialog, so type or paste the path into the field instead.
+- *Tkinter is missing.* Install it as described under [Installation](#installation), then restart ComfyUI.
+- *Linux without a display.* Start ComfyUI from a desktop session, or type the path manually.
+
+**The dialog opens behind other windows.**
+The node asks the system to keep the dialog on top. If it still stays hidden, check your taskbar or Mission Control.
+
+**"no folder selected" error when the workflow runs.**
+The field is empty. Use the button or type a path, then run again.
+
+**The output still shows quotation marks.**
+Update the pack with `git pull` and restart ComfyUI, so the new cleaning code loads. The pack version is shown in `pyproject.toml`, and it should be 0.1.0 or newer.
+
+**The button is missing.**
+The JavaScript did not load. Restart ComfyUI and refresh the browser tab. Check that the `web/js/ahp_folder_picker.js` file exists inside the pack folder.
+
+## Project structure
+
+```text
+comfyuiAHP_nodepack/
+├── __init__.py                  # ComfyUI entry point. Auto-loads every nodes/ahp_*.py file.
+├── pyproject.toml               # Package and ComfyUI Registry metadata
+├── README.md                    # This file
+├── LICENSE                      # GNU General Public License v3.0
+├── .gitignore                   # Files that git should not track
+├── nodes/
+│   ├── __init__.py              # Makes nodes/ a Python package
+│   └── ahp_folder_picker.py     # AHP Folder Picker: Python node and server route
+└── web/
+    └── js/
+        └── ahp_folder_picker.js # AHP Folder Picker: frontend button
+```
+
+## Adding a new AHP node
+
+The pack is built to grow. You do not need to edit `__init__.py` when you add a node.
+
+1. Create `nodes/ahp_<name>.py`. Use a lowercase name with underscores, for example `nodes/ahp_image_resize.py`.
+2. Define the node class in that file, and export `NODE_CLASS_MAPPINGS` and `NODE_DISPLAY_NAME_MAPPINGS` at the bottom.
+3. If the node needs a button or other frontend behaviour, add `web/js/ahp_<name>.js`. Every `.js` file in `web/js/` loads automatically.
+4. Restart ComfyUI and test the node.
+5. Add a row for the node to the table in this README.
+
+Minimal template:
+
+```python
+# nodes/ahp_example.py
+class AHPExample:
+    CATEGORY = "AHP/Utils"
+    FUNCTION = "run"
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("text",)
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"text": ("STRING", {"default": "", "multiline": True})}}
+
+    def run(self, text):
+        return (text.strip(),)
+
+
+NODE_CLASS_MAPPINGS = {"AHP_Example": AHPExample}
+NODE_DISPLAY_NAME_MAPPINGS = {"AHP_Example": "AHP Example"}
+```
+
+## Naming conventions
+
+| Item | Convention | Example |
+|---|---|---|
+| Node file | `nodes/ahp_<snake_case>.py` | `nodes/ahp_folder_picker.py` |
+| Frontend file | `web/js/ahp_<snake_case>.js` | `web/js/ahp_folder_picker.js` |
+| Class name | `AHP` + `PascalCase` | `AHPFolderPicker` |
+| Node ID (mapping key) | `AHP_` + `PascalCase` with underscores | `AHP_FolderPicker` |
+| Display name | `AHP ` + words | `AHP Folder Picker` |
+| Category | `AHP/<Group>` | `AHP/Path`, `AHP/Image`, `AHP/Utils` |
+| Server route | `/ahp/<node_snake_case>/<action>` | `/ahp/folder_picker/select` |
+
+Node IDs must be unique across all installed custom nodes, so the `AHP_` prefix keeps them from clashing with other packs.
 
 ## License
 
-MIT License. The original copyright notice from ComfyUI_LayerStyle is kept in [LICENSE](LICENSE), along with the author's copyright for the changes.
+This project is licensed under the **GNU General Public License v3.0**. See [LICENSE](LICENSE) for the full text.
+
+You are free to use, study, share and change this software. If you distribute a modified version, you must also release it under GPL-3.0 with its source code.

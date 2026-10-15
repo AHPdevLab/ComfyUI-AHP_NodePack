@@ -1,3 +1,43 @@
+# Python bytecode and caches
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+
+# Packaging and build output
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Test and tool caches
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editors and IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local ComfyUI outputs and generated files
+output/
+
+# Local secrets and settings
+.env
+*.local

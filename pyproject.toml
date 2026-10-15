@@ -1,0 +1,27 @@
+[project]
+# The registry does not allow "ComfyUI" in the project name, so the folder can
+# be comfyuiAHP_nodepack while the package name is ahp-nodepack.
+name = "ahp-nodepack"
+description = "AHP node pack for ComfyUI. Starts with the AHP Folder Picker node, which outputs a clean folder path string."
+version = "0.1.0"
+readme = "README.md"
+# License: GNU General Public License v3.0. See the LICENSE file.
+license = { text = "GPL-3.0-only" }
+requires-python = ">=3.10"
+keywords = ["comfyui", "comfyui-custom-node", "ahp", "folder-picker", "path"]
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Graphics",
+]
+
+[project.urls]
+# Replace with your real repository URL once it exists.
+Repository = "https://github.com/YOUR_GITHUB_USERNAME/comfyuiAHP_nodepack"
+
+[tool.comfy]
+# Your Comfy Registry publisher ID. Replace it before publishing.
+PublisherId = "YOUR_PUBLISHER_ID"
+DisplayName = "AHP Nodepack"
+# Optional. Uncomment and set the ComfyUI version you tested with.
+# requires-comfyui = ">=0.3.0"
