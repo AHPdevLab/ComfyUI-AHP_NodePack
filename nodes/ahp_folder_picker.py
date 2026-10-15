@@ -1,28 +1,43 @@
 """
 AHP Folder Picker
 
-Built only from ComfyUI's own mechanisms, the same ones the built-in Load Image
-node uses:
+An optional text field with a "Browse Folder" button.
 
-- a combo (dropdown) widget, filled from the folders inside ComfyUI's input
-  directory (folder_paths.get_input_directory()),
-- VALIDATE_INPUTS, so ComfyUI checks the choice before the workflow runs,
-- IS_CHANGED, so the workflow re-runs when the folder's contents change.
+The button (web/js/ahp_folder_picker.js) asks the ComfyUI server to open the
+operating system's own folder dialog on the computer that runs ComfyUI:
 
-It has no JavaScript and no tkinter.
+- Windows: the standard Windows file dialog (the Explorer-style window that
+  most Windows programs use), started with PowerShell
+- macOS:   the Finder folder chooser, started with osascript
+- Linux:   zenity or kdialog, if one of them is installed
 
-Output: the full folder path as a plain string with no quotation marks.
+The folder_path input is optional. The output is the chosen path as a plain
+string with no quotation marks, or an empty string if nothing is chosen.
+The node does not use tkinter.
 
 Licensed under the GNU General Public License v3.0. See LICENSE.
 """
 
-import hashlib
+import asyncio
+import base64
 import os
+import subprocess
+import sys
 
-import folder_paths
+from aiohttp import web
+
+try:
+    from server import PromptServer
+except ImportError:  # Lets the module be imported outside ComfyUI, e.g. in tests
+    PromptServer = None
 
 
-NO_FOLDERS = "(no folders in ComfyUI/input)"
+ROUTE = "/ahp/folder_picker/select"
+DIALOG_TITLE = "AHP Folder Picker - choose a folder"
+
+
+class DialogError(RuntimeError):
+    """The folder dialog could not be opened. The message explains why."""
 
 
 def clean_path(raw):
@@ -41,49 +56,152 @@ def clean_path(raw):
     return path.strip()
 
 
-def list_input_folders():
-    """Folder names inside ComfyUI/input, sorted, for the dropdown."""
-    input_dir = folder_paths.get_input_directory()
-    if not os.path.isdir(input_dir):
-        return [NO_FOLDERS]
-    with os.scandir(input_dir) as entries:
-        names = sorted(entry.name for entry in entries if entry.is_dir())
-    return names or [NO_FOLDERS]
+def _finish(raw):
+    """Clean the dialog's output and normalise the separators for this OS."""
+    chosen = clean_path(raw)
+    return os.path.normpath(chosen) if chosen else ""
 
 
-def resolve_folder(folder, custom_path=""):
-    """
-    Work out the full folder path.
+# ---------------------------------------------------------------- Windows
 
-    A non-empty custom_path wins and may be any absolute (or ~) path.
-    Otherwise the folder is taken from the dropdown inside ComfyUI/input.
-    """
-    custom = clean_path(custom_path)
-    if custom:
-        return os.path.abspath(os.path.expanduser(custom))
-    return os.path.abspath(os.path.join(folder_paths.get_input_directory(), folder))
+def _ps_quote(text):
+    """Quote a string for PowerShell as a single-quoted literal."""
+    return "'" + text.replace("'", "''") + "'"
 
 
-def folder_fingerprint(path):
-    """
-    A hash of the folder's entries and their modification times.
+def _windows_command(initial_dir):
+    script = "\n".join([
+        "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
+        "Add-Type -AssemblyName System.Windows.Forms",
+        # The Open dialog is the modern Windows file dialog. Set up as below,
+        # it lets the user pick a folder, so it works as a folder chooser.
+        "$dialog = New-Object System.Windows.Forms.OpenFileDialog",
+        f"$dialog.Title = {_ps_quote(DIALOG_TITLE)}",
+        "$dialog.CheckFileExists = $false",
+        "$dialog.CheckPathExists = $true",
+        "$dialog.ValidateNames = $false",
+        "$dialog.FileName = 'Select this folder'",
+        f"$start = {_ps_quote(initial_dir)}",
+        "if ($start -and (Test-Path -LiteralPath $start)) { $dialog.InitialDirectory = $start }",
+        # A hidden, topmost owner keeps the dialog in front of the browser.
+        "$owner = New-Object System.Windows.Forms.Form",
+        "$owner.TopMost = $true",
+        "$owner.ShowInTaskbar = $false",
+        "if ($dialog.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) {",
+        # The folder is the directory part of the chosen "file" name.
+        "    Write-Output ([System.IO.Path]::GetDirectoryName($dialog.FileName))",
+        "}",
+        "$owner.Dispose()",
+    ])
+    # -EncodedCommand takes UTF-16LE base64, so Persian and other non-ASCII
+    # folder names survive the trip through the command line.
+    encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+    return [
+        "powershell", "-NoProfile", "-NonInteractive", "-STA",
+        "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded,
+    ]
 
-    ComfyUI re-runs a node when this value changes. It is the same idea the
-    built-in Load Image node uses with a file hash.
-    """
-    digest = hashlib.sha256(path.encode("utf-8"))
+
+# ------------------------------------------------------------------ macOS
+
+def _applescript_quote(text):
+    return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _mac_command(initial_dir):
+    script = f"POSIX path of (choose folder with prompt {_applescript_quote(DIALOG_TITLE)}"
+    if initial_dir:
+        script += f" default location POSIX file {_applescript_quote(initial_dir)}"
+    script += ")"
+    return ["osascript", "-e", script]
+
+
+# ------------------------------------------------------------------ Linux
+
+def _linux_dialog(initial_dir):
+    if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        raise DialogError(
+            "No graphical display was found, so no folder dialog can open. "
+            "Type the folder path into the field instead."
+        )
+
+    start = initial_dir or os.path.expanduser("~")
+    attempts = [
+        ["zenity", "--file-selection", "--directory",
+         f"--title={DIALOG_TITLE}", f"--filename={start.rstrip(os.sep)}{os.sep}"],
+        ["kdialog", "--title", DIALOG_TITLE, "--getexistingdirectory", start],
+    ]
+    for command in attempts:
+        try:
+            result = subprocess.run(command, capture_output=True, check=False)
+        except FileNotFoundError:
+            continue  # This tool is not installed, so try the next one
+        # Both tools exit with status 1 when the user cancels.
+        if result.returncode == 0:
+            return _finish(result.stdout.decode("utf-8", errors="replace"))
+        return ""
+
+    raise DialogError(
+        "No folder dialog tool was found. Install zenity or kdialog, "
+        "or type the folder path into the field instead."
+    )
+
+
+# ------------------------------------------------------------ Shared logic
+
+def open_folder_dialog(initial_dir=""):
+    """Open the OS folder dialog and return the chosen path, or "" if cancelled."""
+    if sys.platform.startswith("win"):
+        command = _windows_command(initial_dir)
+    elif sys.platform == "darwin":
+        command = _mac_command(initial_dir)
+    else:
+        return _linux_dialog(initial_dir)
+
     try:
-        with os.scandir(path) as entries:
-            for entry in sorted(entries, key=lambda e: e.name):
-                digest.update(entry.name.encode("utf-8"))
-                digest.update(str(entry.stat().st_mtime_ns).encode("utf-8"))
-    except OSError:
-        digest.update(b"missing")
-    return digest.hexdigest()
+        result = subprocess.run(command, capture_output=True, check=False)
+    except FileNotFoundError as error:
+        raise DialogError(f"Could not start the folder dialog: {error}") from error
+
+    stdout = result.stdout.decode("utf-8", errors="replace")
+    if result.returncode == 0:
+        return _finish(stdout)
+
+    stderr = result.stderr.decode("utf-8", errors="replace")
+    if "-128" in stderr:  # macOS: the user pressed Cancel
+        return ""
+    raise DialogError(stderr.strip() or "The folder dialog failed.")
+
+
+if PromptServer is not None:
+
+    @PromptServer.instance.routes.post(ROUTE)
+    async def ahp_select_folder(request):
+        """Called by the Browse Folder button. Responds with {"path": ...}."""
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+
+        current = clean_path(body.get("current", "")) if isinstance(body, dict) else ""
+        initial_dir = current if os.path.isdir(current) else ""
+
+        try:
+            # The dialog blocks until the user answers, so run it in a worker thread.
+            folder = await asyncio.to_thread(open_folder_dialog, initial_dir)
+        except DialogError as error:
+            return web.json_response({"path": "", "error": str(error)}, status=500)
+        except Exception as error:
+            return web.json_response(
+                {"path": "", "error": f"Could not open the folder dialog: {error}"},
+                status=500,
+            )
+
+        return web.json_response({"path": folder, "cancelled": folder == ""})
 
 
 class AHPFolderPicker:
-    """Outputs a folder path as a clean string with no quotation marks."""
+    """Outputs the chosen folder path as a clean string. The input is optional."""
 
     CATEGORY = "AHP/Path"
     FUNCTION = "get_folder_path"
@@ -93,32 +211,17 @@ class AHPFolderPicker:
     @classmethod
     def INPUT_TYPES(cls):
         return {
-            "required": {
-                # Same look as Load Image's dropdown, labelled "folder".
-                "folder": (list_input_folders(),),
-            },
+            "required": {},
             "optional": {
-                # Optional full path. When filled in, it replaces the dropdown choice.
-                "custom_path": ("STRING", {"default": "", "multiline": False}),
+                "folder_path": ("STRING", {"default": "", "multiline": False}),
             },
         }
 
-    @classmethod
-    def VALIDATE_INPUTS(cls, folder, custom_path=""):
-        path = resolve_folder(folder, custom_path)
-        if os.path.isdir(path):
-            return True
-        return (
-            f"Folder not found: {path}. Put a folder inside ComfyUI/input "
-            "and refresh the node list, or type a full folder path in custom_path."
-        )
-
-    @classmethod
-    def IS_CHANGED(cls, folder, custom_path=""):
-        return folder_fingerprint(resolve_folder(folder, custom_path))
-
-    def get_folder_path(self, folder, custom_path=""):
-        return (resolve_folder(folder, custom_path),)
+    def get_folder_path(self, folder_path=""):
+        path = clean_path(folder_path)
+        if path and not os.path.isdir(path):
+            print(f"[AHP Folder Picker] Warning: folder does not exist (yet): {path}")
+        return (path,)
 
 
 NODE_CLASS_MAPPINGS = {
