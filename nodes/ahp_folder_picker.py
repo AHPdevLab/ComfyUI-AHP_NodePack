@@ -1,52 +1,28 @@
 """
 AHP Folder Picker
 
-A string-path node with a "Select Folder" button.
+Built only from ComfyUI's own mechanisms, the same ones the built-in Load Image
+node uses:
 
-- The button (web/js/ahp_folder_picker.js) asks the ComfyUI server to open a
-  native folder dialog on the machine running ComfyUI, then fills the text
-  field with the chosen path.
-- The text field can also be typed or pasted into directly.
-- The output is the path as a plain string with no quotation marks.
+- a combo (dropdown) widget, filled from the folders inside ComfyUI's input
+  directory (folder_paths.get_input_directory()),
+- VALIDATE_INPUTS, so ComfyUI checks the choice before the workflow runs,
+- IS_CHANGED, so the workflow re-runs when the folder's contents change.
 
-Copyright (C) the comfyuiAHP_nodepack authors.
+It has no JavaScript and no tkinter.
+
+Output: the full folder path as a plain string with no quotation marks.
+
 Licensed under the GNU General Public License v3.0. See LICENSE.
 """
 
-import asyncio
+import hashlib
 import os
-import subprocess
-import sys
 
-from aiohttp import web
-
-try:
-    from server import PromptServer
-except ImportError:  # Lets the module be imported outside ComfyUI, e.g. in tests
-    PromptServer = None
+import folder_paths
 
 
-ROUTE = "/ahp/folder_picker/select"
-
-# The dialog runs in its own Python process. This keeps tkinter on that
-# process's main thread (required on macOS) and stops a dialog from freezing
-# the ComfyUI server.
-_DIALOG_CODE = r'''
-import sys
-import tkinter as tk
-from tkinter import filedialog
-
-initial = sys.argv[1] if len(sys.argv) > 1 else ""
-root = tk.Tk()
-root.withdraw()
-root.attributes("-topmost", True)
-folder = filedialog.askdirectory(
-    initialdir=initial or None,
-    title="AHP Folder Picker - choose a folder",
-)
-root.destroy()
-sys.stdout.buffer.write((folder or "").encode("utf-8"))
-'''
+NO_FOLDERS = "(no folders in ComfyUI/input)"
 
 
 def clean_path(raw):
@@ -65,46 +41,45 @@ def clean_path(raw):
     return path.strip()
 
 
-def _open_folder_dialog(initial_dir):
-    """Open the native folder dialog and return the chosen path ("" if cancelled)."""
-    env = dict(os.environ, PYTHONIOENCODING="utf-8")
-    result = subprocess.run(
-        [sys.executable, "-c", _DIALOG_CODE, initial_dir],
-        capture_output=True,
-        env=env,
-        check=False,
-    )
-    if result.returncode != 0:
-        error = result.stderr.decode("utf-8", errors="replace").strip()
-        raise RuntimeError(error or "folder dialog exited with an error")
-
-    chosen = clean_path(result.stdout.decode("utf-8", errors="replace"))
-    return os.path.normpath(chosen) if chosen else ""
+def list_input_folders():
+    """Folder names inside ComfyUI/input, sorted, for the dropdown."""
+    input_dir = folder_paths.get_input_directory()
+    if not os.path.isdir(input_dir):
+        return [NO_FOLDERS]
+    with os.scandir(input_dir) as entries:
+        names = sorted(entry.name for entry in entries if entry.is_dir())
+    return names or [NO_FOLDERS]
 
 
-if PromptServer is not None:
+def resolve_folder(folder, custom_path=""):
+    """
+    Work out the full folder path.
 
-    @PromptServer.instance.routes.post(ROUTE)
-    async def ahp_select_folder(request):
-        """Called by the Select Folder button. Responds with {"path": ...}."""
-        try:
-            body = await request.json()
-        except Exception:
-            body = {}
+    A non-empty custom_path wins and may be any absolute (or ~) path.
+    Otherwise the folder is taken from the dropdown inside ComfyUI/input.
+    """
+    custom = clean_path(custom_path)
+    if custom:
+        return os.path.abspath(os.path.expanduser(custom))
+    return os.path.abspath(os.path.join(folder_paths.get_input_directory(), folder))
 
-        current = clean_path(body.get("current", "")) if isinstance(body, dict) else ""
-        initial_dir = current if os.path.isdir(current) else ""
 
-        try:
-            # The dialog blocks until the user answers, so run it in a worker thread.
-            folder = await asyncio.to_thread(_open_folder_dialog, initial_dir)
-        except Exception as error:
-            return web.json_response(
-                {"path": "", "error": f"Could not open the folder dialog: {error}"},
-                status=500,
-            )
+def folder_fingerprint(path):
+    """
+    A hash of the folder's entries and their modification times.
 
-        return web.json_response({"path": folder, "cancelled": folder == ""})
+    ComfyUI re-runs a node when this value changes. It is the same idea the
+    built-in Load Image node uses with a file hash.
+    """
+    digest = hashlib.sha256(path.encode("utf-8"))
+    try:
+        with os.scandir(path) as entries:
+            for entry in sorted(entries, key=lambda e: e.name):
+                digest.update(entry.name.encode("utf-8"))
+                digest.update(str(entry.stat().st_mtime_ns).encode("utf-8"))
+    except OSError:
+        digest.update(b"missing")
+    return digest.hexdigest()
 
 
 class AHPFolderPicker:
@@ -119,20 +94,31 @@ class AHPFolderPicker:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "folder_path": ("STRING", {"default": "", "multiline": False}),
-            }
+                # Same look as Load Image's dropdown, labelled "folder".
+                "folder": (list_input_folders(),),
+            },
+            "optional": {
+                # Optional full path. When filled in, it replaces the dropdown choice.
+                "custom_path": ("STRING", {"default": "", "multiline": False}),
+            },
         }
 
-    def get_folder_path(self, folder_path):
-        path = clean_path(folder_path)
-        if not path:
-            raise ValueError(
-                "AHP Folder Picker: no folder selected. "
-                "Click 'Select Folder' or type a path into the field."
-            )
-        if not os.path.isdir(path):
-            print(f"[AHP Folder Picker] Warning: folder does not exist (yet): {path}")
-        return (path,)
+    @classmethod
+    def VALIDATE_INPUTS(cls, folder, custom_path=""):
+        path = resolve_folder(folder, custom_path)
+        if os.path.isdir(path):
+            return True
+        return (
+            f"Folder not found: {path}. Put a folder inside ComfyUI/input "
+            "and refresh the node list, or type a full folder path in custom_path."
+        )
+
+    @classmethod
+    def IS_CHANGED(cls, folder, custom_path=""):
+        return folder_fingerprint(resolve_folder(folder, custom_path))
+
+    def get_folder_path(self, folder, custom_path=""):
+        return (resolve_folder(folder, custom_path),)
 
 
 NODE_CLASS_MAPPINGS = {

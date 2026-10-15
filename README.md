@@ -2,13 +2,15 @@
 
 A collection of utility nodes for [ComfyUI](https://github.com/comfyanonymous/ComfyUI), made by AHP. Every node in this pack has the `AHP` prefix, and each node lives in its own file.
 
-The first node is the **AHP Folder Picker**. It has a button that opens a native folder dialog, and it outputs the chosen folder path as a plain string with no quotation marks.
+The first node is the **AHP Folder Picker**. It is built only from ComfyUI's own mechanisms, the same ones the built-in Load Image node uses. It has no JavaScript and no tkinter. It shows a dropdown labelled **folder** and outputs the chosen folder's full path as a plain string with no quotation marks.
 
 ## Contents
 
 - [Nodes](#nodes)
+- [How it works](#how-it-works)
 - [Installation](#installation)
 - [Using the AHP Folder Picker](#using-the-ahp-folder-picker)
+- [Why there is no upload or browse button](#why-there-is-no-upload-or-browse-button)
 - [Troubleshooting](#troubleshooting)
 - [Project structure](#project-structure)
 - [Adding a new AHP node](#adding-a-new-ahp-node)
@@ -19,29 +21,32 @@ The first node is the **AHP Folder Picker**. It has a button that opens a native
 
 | Display name | Node ID | Category | File | Purpose |
 |---|---|---|---|---|
-| AHP Folder Picker | `AHP_FolderPicker` | `AHP/Path` | `nodes/ahp_folder_picker.py` | Pick a folder with a button and output its path as a string |
+| AHP Folder Picker | `AHP_FolderPicker` | `AHP/Path` | `nodes/ahp_folder_picker.py` | Choose a folder and output its full path as a string |
 
 ### AHP Folder Picker
 
 **Inputs**
 
-| Name | Type | Widget | Description |
-|---|---|---|---|
-| `folder_path` | STRING | Text field and **Select Folder** button | The folder path. Type or paste it, or click the button to choose a folder. |
+| Name | Type | Widget | Required | Description |
+|---|---|---|---|---|
+| `folder` | Dropdown | Lists every folder inside `ComfyUI/input` | Yes | The folder to use. The label is shown as "folder". |
+| `custom_path` | STRING | Text field | No | A full folder path, for example `D:\Photos\raw`. When this is filled in, it replaces the dropdown choice. |
 
 **Outputs**
 
 | Name | Type | Description |
 |---|---|---|
-| `folder_path` | STRING | The cleaned folder path. It never contains quotation marks. |
+| `folder_path` | STRING | The full folder path with no quotation marks. |
 
-**Behaviour**
+## How it works
 
-- Clicking **Select Folder** opens a folder chooser on the machine that runs ComfyUI. Choosing a folder fills in the text field. Cancelling leaves the field as it was.
-- The output is cleaned before it is passed on. Whitespace and quotation marks are removed. This matters on Windows, where "Copy as path" wraps a path in double quotes. Double quotes are removed from everywhere in the path, because Windows does not allow them in names. Single quotes are removed only from the ends, so a folder called `John's photos` keeps its apostrophe.
-- Paths returned by the folder dialog are normalised to your operating system's separators. For example, `C:/Photos/raw` becomes `C:\Photos\raw` on Windows. Typed paths are passed through as you enter them, apart from the quote cleaning.
-- If the path does not exist yet, the node still outputs it and prints a warning in the console. This is useful for output folders that a later node will create.
-- If the field is empty, the node stops with a clear error message: "no folder selected".
+The node uses three ComfyUI mechanisms that the built-in Load Image node also uses.
+
+1. **Dropdown.** The list of options is built from the folders in ComfyUI's input directory, `ComfyUI/input/`. Loose files are ignored. Only folders appear.
+2. **Validation.** Before a workflow runs, ComfyUI checks that the chosen folder exists. If it does not, the node shows a clear error instead of failing later.
+3. **Change detection.** The node hashes the folder's entries and their modification times. When a file is added, removed or changed, the hash changes and ComfyUI runs the node again. This matches how Load Image handles changed files.
+
+Quotation marks are removed from the output. This matters on Windows, where "Copy as path" wraps a path in double quotes. Double quotes are removed everywhere in the path, because Windows does not allow them in names. Single quotes are removed only from the ends, so a folder called `John's photos` keeps its apostrophe.
 
 ## Installation
 
@@ -49,7 +54,8 @@ Requirements:
 
 - ComfyUI (a recent version with custom node support)
 - Python 3.10 or newer, which is the Python that ComfyUI uses
-- Tkinter, which ships with the official Python installers on Windows and macOS. On Linux, install it with your package manager, for example `sudo apt install python3-tk`.
+
+No extra packages are needed.
 
 ### Option 1: Git clone (recommended while developing)
 
@@ -66,7 +72,7 @@ Restart ComfyUI. The AHP Folder Picker appears in the node menu under **AHP → 
 2. Place it inside `ComfyUI/custom_nodes/`.
 3. Restart ComfyUI.
 
-Do not put the `.py` files directly into `custom_nodes/`. The whole `comfyuiAHP_nodepack` folder has to go in, because the node files depend on each other.
+Put the whole `comfyuiAHP_nodepack` folder in `custom_nodes/`, not only its `.py` files, because the node files depend on each other.
 
 ### Updating
 
@@ -75,37 +81,47 @@ cd ComfyUI/custom_nodes/comfyuiAHP_nodepack
 git pull
 ```
 
-Then restart ComfyUI. Browser JavaScript changes may also need a page refresh.
+Then restart ComfyUI.
 
 ## Using the AHP Folder Picker
 
-1. Add the node: double-click the canvas, search for **AHP Folder Picker**, and select it.
-2. Click **Select Folder** and choose a folder in the dialog. The path appears in the field.
-3. Connect the `folder_path` output to any node that takes a string path. For example, it can feed a batch image loader, or a save node that needs a folder.
-4. Queue the workflow as usual.
+**Option A: a folder inside ComfyUI/input (the native way)**
 
-If you already have a path, you can paste it into the field. Quotation marks around it are removed automatically.
+1. Copy or move your folder into `ComfyUI/input/`. For example, `ComfyUI/input/shoots_2026/`.
+2. In ComfyUI, refresh the node definitions. Press **R**, or restart ComfyUI if the folder does not appear.
+3. Add the **AHP Folder Picker** node and open the **folder** dropdown. Choose your folder.
+4. Connect `folder_path` to the node that needs a path, such as a batch image loader.
+
+**Option B: any folder on your computer**
+
+1. Copy the full path of the folder. On Windows you can use "Copy as path" in File Explorer.
+2. Paste it into `custom_path`. Quotation marks around it are removed automatically.
+3. Run the workflow. The output is the path you pasted, with no quotation marks.
+
+When `custom_path` is filled in, it is used and the dropdown is ignored.
+
+## Why there is no upload or browse button
+
+The built-in Load Image node has a "choose file to upload" button. That button is part of ComfyUI itself, and it works only for files. It sends one file to the server and saves it in `ComfyUI/input/`. A browser cannot hand a folder path or a whole folder to a custom node without JavaScript, and this pack avoids JavaScript on purpose. So the folder is picked from the dropdown, or typed into `custom_path`.
+
+The folder icon from the Load Image layout is also not available. Icons need custom frontend code.
 
 ## Troubleshooting
 
-**The Select Folder button does nothing, or shows "Could not open the folder dialog".**
-The dialog is opened on the machine that runs ComfyUI, not in your browser. This matters in these cases:
+**The folder I added does not appear in the dropdown.**
+The dropdown is built when ComfyUI starts or refreshes its node list. Press **R** in ComfyUI, or restart it.
 
-- *ComfyUI runs on a remote or headless server* (a cloud GPU, RunPod, or a Linux box with no desktop). There is no screen to show the dialog, so type or paste the path into the field instead.
-- *Tkinter is missing.* Install it as described under [Installation](#installation), then restart ComfyUI.
-- *Linux without a display.* Start ComfyUI from a desktop session, or type the path manually.
+**"Folder not found" error when the workflow runs.**
+The chosen folder does not exist. Check the spelling of the folder name, or the path in `custom_path`. Also check that the folder is inside `ComfyUI/input/` if you are using the dropdown.
 
-**The dialog opens behind other windows.**
-The node asks the system to keep the dialog on top. If it still stays hidden, check your taskbar or Mission Control.
-
-**"no folder selected" error when the workflow runs.**
-The field is empty. Use the button or type a path, then run again.
+**The dropdown shows "(no folders in ComfyUI/input)".**
+There are no folders in `ComfyUI/input/` yet. Add one, refresh, and choose it. Or use `custom_path` instead.
 
 **The output still shows quotation marks.**
-Update the pack with `git pull` and restart ComfyUI, so the new cleaning code loads. The pack version is shown in `pyproject.toml`, and it should be 0.1.0 or newer.
+Update the pack with `git pull` and restart ComfyUI, so the new code loads. The pack version is in `pyproject.toml`.
 
-**The button is missing.**
-The JavaScript did not load. Restart ComfyUI and refresh the browser tab. Check that the `web/js/ahp_folder_picker.js` file exists inside the pack folder.
+**The workflow does not re-run after I add files to the folder.**
+Change detection looks at the folder's top-level entries and their modification times. Files added inside sub-subfolders do not change the hash. Make sure the files you add are directly inside the chosen folder.
 
 ## Project structure
 
@@ -116,12 +132,9 @@ comfyuiAHP_nodepack/
 ├── README.md                    # This file
 ├── LICENSE                      # GNU General Public License v3.0
 ├── .gitignore                   # Files that git should not track
-├── nodes/
-│   ├── __init__.py              # Makes nodes/ a Python package
-│   └── ahp_folder_picker.py     # AHP Folder Picker: Python node and server route
-└── web/
-    └── js/
-        └── ahp_folder_picker.js # AHP Folder Picker: frontend button
+└── nodes/
+    ├── __init__.py              # Makes nodes/ a Python package
+    └── ahp_folder_picker.py     # AHP Folder Picker: dropdown node, path logic, validation
 ```
 
 ## Adding a new AHP node
@@ -130,9 +143,8 @@ The pack is built to grow. You do not need to edit `__init__.py` when you add a 
 
 1. Create `nodes/ahp_<name>.py`. Use a lowercase name with underscores, for example `nodes/ahp_image_resize.py`.
 2. Define the node class in that file, and export `NODE_CLASS_MAPPINGS` and `NODE_DISPLAY_NAME_MAPPINGS` at the bottom.
-3. If the node needs a button or other frontend behaviour, add `web/js/ahp_<name>.js`. Every `.js` file in `web/js/` loads automatically.
-4. Restart ComfyUI and test the node.
-5. Add a row for the node to the table in this README.
+3. Restart ComfyUI and test the node.
+4. Add a row for the node to the table in this README.
 
 Minimal template:
 
@@ -161,12 +173,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {"AHP_Example": "AHP Example"}
 | Item | Convention | Example |
 |---|---|---|
 | Node file | `nodes/ahp_<snake_case>.py` | `nodes/ahp_folder_picker.py` |
-| Frontend file | `web/js/ahp_<snake_case>.js` | `web/js/ahp_folder_picker.js` |
 | Class name | `AHP` + `PascalCase` | `AHPFolderPicker` |
 | Node ID (mapping key) | `AHP_` + `PascalCase` with underscores | `AHP_FolderPicker` |
 | Display name | `AHP ` + words | `AHP Folder Picker` |
 | Category | `AHP/<Group>` | `AHP/Path`, `AHP/Image`, `AHP/Utils` |
-| Server route | `/ahp/<node_snake_case>/<action>` | `/ahp/folder_picker/select` |
 
 Node IDs must be unique across all installed custom nodes, so the `AHP_` prefix keeps them from clashing with other packs.
 
