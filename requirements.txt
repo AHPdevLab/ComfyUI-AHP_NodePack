@@ -1,0 +1,7 @@
+# Dependencies for comfyuiAHP_nodepack.
+# Install into the Python environment that ComfyUI uses:
+#   python -m pip install -r requirements.txt
+# Tested with markdown-it-py 4.0.0, mdit-py-plugins 0.6.1 and latex2mathml 3.81.1.
+markdown-it-py>=3.0
+mdit-py-plugins>=0.4
+latex2mathml>=3.0

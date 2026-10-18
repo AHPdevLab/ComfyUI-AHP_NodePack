@@ -2,12 +2,17 @@
 
 A collection of utility nodes for [ComfyUI](https://github.com/comfyanonymous/ComfyUI), made by AHP. Every node in this pack has the `AHP` prefix, and each node lives in its own file.
 
-The first node is the **AHP Folder Picker**. It has a **Browse Folder** button that opens your operating system's folder dialog. It outputs the chosen folder's full path as a plain string with no quotation marks. The node does not use tkinter.
+The pack has two nodes so far:
+
+- **AHP Folder Picker** has a **Browse Folder** button that opens your operating system's folder dialog. It outputs the chosen folder's full path as a plain string with no quotation marks. It does not use tkinter.
+- **AHP Markdown Note** is a text note with a rich Markdown preview. It supports tables, task lists, footnotes, definition lists, math, and right-to-left (RTL) languages such as Persian and Arabic.
+- **AHP Image Crop Fit Canvas** places a cut-out product in the middle of a fixed-size canvas, with padding, selectable scaling modes, and a smart fit for very wide, low objects. It outputs an image and a mask, ready for a watermark and for a product website.
 
 ## Contents
 
 - [Nodes](#nodes)
-- [How it works](#how-it-works)
+- [AHP Markdown Note](#ahp-markdown-note)
+- [How the AHP Folder Picker works](#how-the-ahp-folder-picker-works)
 - [Installation](#installation)
 - [Using the AHP Folder Picker](#using-the-ahp-folder-picker)
 - [Platform support](#platform-support)
@@ -22,6 +27,8 @@ The first node is the **AHP Folder Picker**. It has a **Browse Folder** button t
 | Display name | Node ID | Category | File | Purpose |
 |---|---|---|---|---|
 | AHP Folder Picker | `AHP_FolderPicker` | `AHP/Path` | `nodes/ahp_folder_picker.py` | Choose a folder with a button and output its full path as a string |
+| AHP Markdown Note | `AHP_MarkdownNote` | `AHP/Text` | `nodes/ahp_markdown_note.py` | Write a note in Markdown, with a live rich preview that supports RTL languages |
+| AHP Image Crop Fit Canvas | `AHP_ImageCropFitCanvas` | `AHP/Image` | `nodes/ahp_image_crop_fit_canvas.py` | Crop a cut-out product and centre it on a fixed canvas, with padding and scaling modes |
 
 ### AHP Folder Picker
 
@@ -37,7 +44,90 @@ The first node is the **AHP Folder Picker**. It has a **Browse Folder** button t
 |---|---|---|
 | `folder_path` | STRING | The folder path with no quotation marks. It is an empty string if no folder was chosen. |
 
-## How it works
+### AHP Image Crop Fit Canvas
+
+Places a cut-out product in the middle of a canvas. It is meant for product photos that will get a watermark later and go on a product website.
+
+**Inputs**
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `image` | IMAGE | required | The product image. Transparent (RGBA) or RGB. |
+| `canvas_width` | INT | 1080 | Width of the output canvas, in pixels. |
+| `canvas_height` | INT | 1080 | Height of the output canvas, in pixels. |
+| `canvas_padding` | INT | 80 | Margin between the canvas edge and the working area, in pixels, on every side. |
+| `inner_box_padding` | INT | 40 | Extra space inside the working area, around the object, in pixels, on every side. |
+| `scaling_mode` | Dropdown | `smart_fit` | How the object is scaled. See the table below. |
+| `background` | Dropdown | `white` | `white`, `black`, or `transparent`. |
+| `mask` | MASK | none | Marks the object. Optional. If it is missing, the image's alpha channel is used, or the whole image if there is no alpha. |
+
+**Outputs**
+
+| Name | Type | Description |
+|---|---|---|
+| `image` | IMAGE | The canvas with the centred object. RGB for `white` or `black`. RGBA for `transparent`. |
+| `mask` | MASK | The object's position on the canvas. Use it for the watermark or for masking later. |
+
+**Scaling modes**
+
+| Mode | What it does |
+|---|---|
+| `smart_fit` | Fits the whole object inside the inner box. A very wide, low object may use part of the inner padding, so it looks larger. Recommended for products. |
+| `fit` | Fits the whole object inside the inner box, keeping its shape. Never crops. |
+| `fit_no_upscale` | Like `fit`, but never enlarges the object beyond its original size. |
+| `fill` | Covers the inner box. The edges of the object that fall outside it are cropped. |
+| `stretch` | Fills the inner box exactly, ignoring the aspect ratio. Distorts the object. |
+
+**How the smart fit works.** Very wide, low objects, such as a belt, a scarf, or a long bottle, look too small in a square canvas. `smart_fit` checks two things: the object is at least 2.5 times wider than it is tall, and its fitted height is less than 35% of the canvas height. If both are true, the object may extend into up to half of the inner box padding on the left and right. It never touches the canvas padding, and its height stays inside the inner box, so the change is only a little larger. These limits are constants at the top of `nodes/ahp_image_crop_fit_canvas.py` (`SMART_WIDE_RATIO`, `SMART_MIN_HEIGHT_RATIO`, `SMART_BLEED_FRACTION`), and you can change them there.
+
+**Background and transparency.** With `white` or `black`, a transparent part of an RGBA image is blended onto that colour, and the output is RGB. With `transparent`, the output is RGBA with a clear background, and the object keeps its own transparency.
+
+**Mask.** If you connect a mask, the object is cropped to the mask's shape. Without a mask, the alpha channel is used. An RGB image with no mask counts as one whole object.
+
+**Credit.** The cropping, scaling and centring logic is adapted from the "fit to canvas" script by Ali Haghighat Panah. The pixel-based inputs, the scaling modes, the smart fit rule, the optional mask input and the background choice were added for this pack. See the note in the file header.
+
+### AHP Markdown Note
+
+**Inputs**
+
+| Name | Type | Widget | Required | Description |
+|---|---|---|---|---|
+| `text` | STRING | Multi-line text box, with a live preview below it | No | The note, written in Markdown. The text box lays out RTL text correctly. |
+
+**Outputs**
+
+| Name | Type | Description |
+|---|---|---|
+| `markdown` | STRING | The note exactly as written. |
+| `html` | STRING | The note rendered to HTML. Every block has `dir="auto"`, so RTL text is laid out right-to-left. |
+
+**Supported Markdown**
+
+| Feature | Example |
+|---|---|
+| Headings, emphasis, links, images | `# Title`, `**bold**`, `*italic*`, `[link](https://example.com)` |
+| Lists and task lists | `- item`, `- [x] done`, `- [ ] to do` |
+| Quotes and code | `> quote`, `` `inline` ``, fenced code blocks with a language name |
+| Tables | `\| A \| B \|` with a header separator row |
+| Strikethrough | `~~text~~` |
+| Footnotes | `Text[^1]` and `[^1]: Note` |
+| Definition lists | A term on one line, then `: definition` on the next |
+| Math | `$e^{i\pi}+1=0$` inline, and `$$\frac{a}{b}$$` as a display block |
+| Horizontal rules | `---` |
+
+**Right-to-left and mixed text**
+
+- Each paragraph, heading, list item, quote and table cell chooses its direction from its first strong character. Persian or Arabic text lines up on the right. English text lines up on the left. A note can mix both.
+- Code blocks and math always stay left-to-right, even inside a right-to-left paragraph.
+- Lists, quotes and indents use the correct side for the direction.
+
+**Safety.** Raw HTML typed into a note is shown as text, not rendered. This keeps notes from running scripts or injecting markup.
+
+**Fonts.** The preview uses Vazirmatn if it is installed, and then falls back to Tahoma, Segoe UI, Noto Naskh Arabic and Noto Sans. Install Vazirmatn for the best Persian and Arabic display. It is a free font and is not bundled with the pack.
+
+**Preview.** The preview updates a moment after you stop typing. It is rendered by the same Python code that produces the `html` output, so what you see is what the workflow outputs.
+
+## How the AHP Folder Picker works
 
 1. **Browse Folder** sends a request from the ComfyUI browser page to the ComfyUI server on the same computer.
 2. The server opens the folder dialog that belongs to your operating system, on the computer that runs ComfyUI.
@@ -54,7 +144,21 @@ Requirements:
 - Python 3.10 or newer, which is the Python that ComfyUI uses
 - A computer where you can see the desktop. The dialog opens on the screen of the machine running ComfyUI. See [Platform support](#platform-support).
 
-No Python packages need to be installed. The node uses only the Python standard library and aiohttp, which ComfyUI already includes.
+The AHP Markdown Note needs three small Python libraries. Install them into the same Python that runs ComfyUI.
+
+Standard install (ComfyUI run from its own folder):
+
+```bash
+python -m pip install -r custom_nodes/comfyuiAHP_nodepack/requirements.txt
+```
+
+Windows portable build (run from the `ComfyUI_windows_portable` folder):
+
+```bash
+python_embeded\python.exe -m pip install -r ComfyUI\custom_nodes\comfyuiAHP_nodepack\requirements.txt
+```
+
+The folder picker needs no extra libraries. If a library is missing, the Markdown note does not load, and the other AHP nodes still work. The console shows which module failed.
 
 ### Option 1: Git clone (recommended while developing)
 
@@ -123,6 +227,18 @@ Double-click into the folder you want, so you are inside it. Leave the file name
 **"Folder does not exist" appears in the console.**
 The path is set but the folder is not there. This is only a warning. Create the folder, or choose a different one.
 
+**The AHP Markdown Note is missing from the node menu.**
+One of its libraries is not installed. The ComfyUI console shows "Could not load ahp_markdown_note.py" with the name of the missing module. Install the libraries as shown under [Installation](#installation), then restart ComfyUI.
+
+**The preview does not update.**
+Click in the text box and type a character, or reload the browser tab. If it still does not update, restart ComfyUI so the browser script reloads.
+
+**Persian or Arabic text shows in the wrong font or looks broken.**
+Install the Vazirmatn font, then restart the browser. The preview also needs a font that supports Arabic script. Noto Naskh Arabic is a good fallback.
+
+**Math shows as red code instead of a formula.**
+The LaTeX has an error, or uses a command the converter does not support. The red text is the original LaTeX, so check it for typos.
+
 ## Project structure
 
 ```text
@@ -132,12 +248,16 @@ comfyuiAHP_nodepack/
 ├── README.md                    # This file
 ├── LICENSE                      # GNU General Public License v3.0
 ├── .gitignore                   # Files that git should not track
+├── requirements.txt             # Python libraries the Markdown note needs
 ├── nodes/
 │   ├── __init__.py              # Makes nodes/ a Python package
-│   └── ahp_folder_picker.py     # AHP Folder Picker: node, OS dialogs, server route
+│   ├── ahp_folder_picker.py     # AHP Folder Picker: node, OS dialogs, server route
+│   ├── ahp_markdown_note.py     # AHP Markdown Note: node, Markdown renderer, preview route
+│   └── ahp_image_crop_fit_canvas.py # AHP Image Crop Fit Canvas: crop, scale and centre on a canvas
 └── web/
     └── js/
-        └── ahp_folder_picker.js # AHP Folder Picker: Browse Folder button
+        ├── ahp_folder_picker.js # AHP Folder Picker: Browse Folder button
+        └── ahp_markdown_note.js # AHP Markdown Note: live preview and RTL text box
 ```
 
 ## Adding a new AHP node

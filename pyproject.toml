@@ -2,12 +2,17 @@
 # The registry does not allow "ComfyUI" in the project name, so the folder can
 # be comfyuiAHP_nodepack while the package name is ahp-nodepack.
 name = "ahp-nodepack"
-description = "AHP node pack for ComfyUI. Starts with the AHP Folder Picker node, which outputs a clean folder path string."
+description = "AHP node pack for ComfyUI. Includes the AHP Folder Picker (a folder path with a Browse button), the AHP Markdown Note (rich Markdown with RTL support) and the AHP Image Crop Fit Canvas (centres products on a padded canvas)."
 version = "0.1.0"
 readme = "README.md"
 # License: GNU General Public License v3.0. See the LICENSE file.
 license = { text = "GPL-3.0-only" }
 requires-python = ">=3.10"
+dependencies = [
+    "markdown-it-py>=3.0",
+    "mdit-py-plugins>=0.4",
+    "latex2mathml>=3.0",
+]
 keywords = ["comfyui", "comfyui-custom-node", "ahp", "folder-picker", "path"]
 classifiers = [
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
