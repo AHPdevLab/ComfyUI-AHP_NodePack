@@ -6,6 +6,7 @@ The pack has two nodes so far:
 
 - **AHP Folder Picker** has a **Browse Folder** button that opens your operating system's folder dialog. It outputs the chosen folder's full path as a plain string with no quotation marks. It does not use tkinter.
 - **AHP Markdown Note** is a text note with a rich Markdown preview. It supports tables, task lists, footnotes, definition lists, math, and right-to-left (RTL) languages such as Persian and Arabic.
+- **AHP Load Image** has a **Browse Image** button that opens your system's file chooser. It outputs the image, its mask, the full path, and the folder that contains it.
 - **AHP Image Crop Fit Canvas** places a cut-out product in the middle of a fixed-size canvas, with padding, selectable scaling modes, and a smart fit for very wide, low objects. It outputs an image and a mask, ready for a watermark and for a product website.
 
 ## Contents
@@ -28,6 +29,7 @@ The pack has two nodes so far:
 |---|---|---|---|---|
 | AHP Folder Picker | `AHP_FolderPicker` | `AHP/Path` | `nodes/ahp_folder_picker.py` | Choose a folder with a button and output its full path as a string |
 | AHP Markdown Note | `AHP_MarkdownNote` | `AHP/Text` | `nodes/ahp_markdown_note.py` | Write a note in Markdown, with a live rich preview that supports RTL languages |
+| AHP Load Image | `AHP_LoadImage` | `AHP/Image` | `nodes/ahp_load_image.py` | Load an image from a path and output the image, mask, full path and directory |
 | AHP Image Crop Fit Canvas | `AHP_ImageCropFitCanvas` | `AHP/Image` | `nodes/ahp_image_crop_fit_canvas.py` | Crop a cut-out product and centre it on a fixed canvas, with padding and scaling modes |
 
 ### AHP Folder Picker
@@ -85,6 +87,34 @@ Places a cut-out product in the middle of a canvas. It is meant for product phot
 **Mask.** If you connect a mask, the object is cropped to the mask's shape. Without a mask, the alpha channel is used. An RGB image with no mask counts as one whole object.
 
 **Credit.** The cropping, scaling and centring logic is adapted from the "fit to canvas" script by Ali Haghighat Panah. The pixel-based inputs, the scaling modes, the smart fit rule, the optional mask input and the background choice were added for this pack. See the note in the file header.
+
+### AHP Load Image
+
+Loads one image, so you can use the picture and know where it came from.
+
+**Choosing the image.** Click **Browse Image** to open your operating system's file chooser (the Explorer window on Windows, Finder on macOS, or zenity/kdialog on Linux). It shows image files, and it opens in the folder of the current image if there is one. Or type or paste the path into the field. Quotation marks are removed automatically, and `~` is the home folder. The same platform notes as the Folder Picker apply: on a remote or headless server, type the path instead.
+
+**Inputs**
+
+| Name | Type | Description |
+|---|---|---|
+| `path` | STRING | The full path to the image file. Set by Browse Image, or typed or pasted. |
+
+**Outputs**
+
+| Name | Type | Description |
+|---|---|---|
+| `image` | IMAGE | The picture, RGB, values 0 to 1. |
+| `mask` | MASK | The transparent areas, with 1 for transparent and 0 for opaque. It is all zeros if the image has no transparency. This matches ComfyUI's built-in Load Image. |
+| `path` | STRING | The full path to the file, with no quotation marks. |
+| `directory` | STRING | The folder that contains the file. |
+
+**Notes**
+
+- Supported formats are whatever Pillow opens: PNG, JPEG, WEBP, BMP, TIFF and GIF (first frame), among others. Camera RAW formats such as CR2 are not supported by this node.
+- The camera's rotation tag is applied, so photos taken in portrait appear upright.
+- The workflow re-runs when the file changes.
+- If the path is empty or the file does not exist, the node shows a clear error.
 
 ### AHP Markdown Note
 
@@ -253,10 +283,13 @@ comfyuiAHP_nodepack/
 │   ├── __init__.py              # Makes nodes/ a Python package
 │   ├── ahp_folder_picker.py     # AHP Folder Picker: node, OS dialogs, server route
 │   ├── ahp_markdown_note.py     # AHP Markdown Note: node, Markdown renderer, preview route
-│   └── ahp_image_crop_fit_canvas.py # AHP Image Crop Fit Canvas: crop, scale and centre on a canvas
+│   ├── ahp_image_crop_fit_canvas.py # AHP Image Crop Fit Canvas: crop, scale and centre on a canvas
+│   ├── _dialogs.py              # Shared OS file-dialog helpers (not a node)
+│   └── ahp_load_image.py        # AHP Load Image: Browse Image route, load, output image, mask, path, directory
 └── web/
     └── js/
         ├── ahp_folder_picker.js # AHP Folder Picker: Browse Folder button
+        ├── ahp_load_image.js    # AHP Load Image: Browse Image button
         └── ahp_markdown_note.js # AHP Markdown Note: live preview and RTL text box
 ```
 
