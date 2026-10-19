@@ -1,3 +1,4 @@
+#AHP
 # Dependencies for comfyuiAHP_nodepack.
 # Install into the Python environment that ComfyUI uses:
 #   python -m pip install -r requirements.txt
