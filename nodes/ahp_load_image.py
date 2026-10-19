@@ -5,6 +5,10 @@ Loads one image from a file path, chosen in one of two ways:
 - Browse Image: a button that opens the operating system's file chooser.
 - Typing or pasting the path into the text field.
 
+Preview: a Preview Image button shows the picture as a plain RGB PNG, with
+no alpha channel and no mask overlay, the same way ComfyUI's own image
+nodes show a picture. Transparent areas are shown on a white background.
+
 Outputs:
 - image:     the picture as a ComfyUI IMAGE (RGB, float values 0 to 1)
 - mask:      the transparent areas as a MASK (1 = transparent, the same
@@ -20,7 +24,9 @@ Licensed under the GNU General Public License v3.0. See LICENSE.
 """
 
 import asyncio
+import base64
 import hashlib
+import io
 import os
 
 import numpy as np
@@ -36,7 +42,14 @@ except ImportError:  # Lets the module be imported outside ComfyUI, e.g. in test
     PromptServer = None
 
 
-ROUTE = "/ahp/load_image/select"
+BROWSE_ROUTE = "/ahp/load_image/select"
+PREVIEW_ROUTE = "/ahp/load_image/preview"
+PREVIEW_MAX_SIDE = 1024  # Larger photos are scaled down for the preview only
+
+try:
+    _LANCZOS = Image.Resampling.LANCZOS
+except AttributeError:  # Pillow older than 9.1
+    _LANCZOS = Image.LANCZOS
 
 
 def resolve_path(raw):
@@ -69,9 +82,32 @@ def load_image_tensors(full_path):
     return image_tensor, mask_tensor
 
 
+def make_preview_png(full_path):
+    """
+    Return (base64_png, (width, height)) for a plain RGB preview.
+
+    The preview has no alpha channel and no mask. Transparent areas are
+    shown on a white background, and the picture is scaled down to fit
+    PREVIEW_MAX_SIDE, keeping its shape.
+    """
+    with Image.open(full_path) as opened:
+        img = ImageOps.exif_transpose(opened)
+        if _has_transparency(img):
+            rgba = img.convert("RGBA")
+            flat = Image.new("RGB", rgba.size, (255, 255, 255))
+            flat.paste(rgba, mask=rgba.getchannel("A"))
+        else:
+            flat = img.convert("RGB")
+
+    flat.thumbnail((PREVIEW_MAX_SIDE, PREVIEW_MAX_SIDE), _LANCZOS)
+    buffer = io.BytesIO()
+    flat.save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode("ascii"), flat.size
+
+
 if PromptServer is not None:
 
-    @PromptServer.instance.routes.post(ROUTE)
+    @PromptServer.instance.routes.post(BROWSE_ROUTE)
     async def ahp_select_image(request):
         """Called by the Browse Image button. Responds with {"path": ...}."""
         try:
@@ -95,6 +131,31 @@ if PromptServer is not None:
             )
 
         return web.json_response({"path": chosen, "cancelled": chosen == ""})
+
+    @PromptServer.instance.routes.post(PREVIEW_ROUTE)
+    async def ahp_preview_image(request):
+        """Called by the Preview Image button. Responds with {"data_url": ...}."""
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+
+        path = resolve_path(body.get("path", "")) if isinstance(body, dict) else ""
+        if not path:
+            return web.json_response({"error": "Choose an image first."}, status=400)
+        if not os.path.isfile(path):
+            return web.json_response({"error": f"No image file found at: {path}"}, status=404)
+
+        try:
+            encoded, (width, height) = await asyncio.to_thread(make_preview_png, path)
+        except Exception as error:
+            return web.json_response({"error": f"Could not preview this file: {error}"}, status=500)
+
+        return web.json_response({
+            "data_url": f"data:image/png;base64,{encoded}",
+            "width": width,
+            "height": height,
+        })
 
 
 class AHPLoadImage:

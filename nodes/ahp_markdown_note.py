@@ -28,12 +28,19 @@ Licensed under the GNU General Public License v3.0. See LICENSE.
 from html import escape
 
 from aiohttp import web
-from markdown_it import MarkdownIt
-from mdit_py_plugins.deflist import deflist_plugin
-from mdit_py_plugins.dollarmath import dollarmath_plugin
-from mdit_py_plugins.footnote import footnote_plugin
-from mdit_py_plugins.tasklists import tasklists_plugin
-from latex2mathml.converter import convert as latex_to_mathml
+
+# The node must appear in the node list even if its libraries are missing.
+# Rendering then fails with a clear message, instead of the node vanishing.
+_MISSING_LIBRARY = None
+try:
+    from markdown_it import MarkdownIt
+    from mdit_py_plugins.deflist import deflist_plugin
+    from mdit_py_plugins.dollarmath import dollarmath_plugin
+    from mdit_py_plugins.footnote import footnote_plugin
+    from mdit_py_plugins.tasklists import tasklists_plugin
+    from latex2mathml.converter import convert as latex_to_mathml
+except ImportError as _error:
+    _MISSING_LIBRARY = str(_error)
 
 try:
     from server import PromptServer
@@ -95,11 +102,20 @@ def _build_renderer():
     return md
 
 
-_RENDERER = _build_renderer()
+INSTALL_HINT = (
+    "The AHP Markdown Note needs three Python libraries that are not installed "
+    f"in this ComfyUI environment ({_MISSING_LIBRARY}). Install them with: "
+    "python -m pip install -r custom_nodes/comfyuiAHP_nodepack/requirements.txt "
+    "then restart ComfyUI."
+)
+
+_RENDERER = _build_renderer() if _MISSING_LIBRARY is None else None
 
 
 def render_markdown(text):
     """Return the note as an HTML fragment wrapped in a dir="auto" container."""
+    if _RENDERER is None:
+        raise RuntimeError(INSTALL_HINT)
     source = text or ""
     if len(source) > MAX_CHARS:
         raise ValueError(f"Note is too large ({len(source)} characters; the limit is {MAX_CHARS}).")
@@ -120,6 +136,8 @@ if PromptServer is not None:
             return web.json_response({"html": render_markdown(str(text))})
         except ValueError as error:
             return web.json_response({"error": str(error)}, status=413)
+        except RuntimeError as error:
+            return web.json_response({"error": str(error)}, status=500)
 
 
 class AHPMarkdownNote:

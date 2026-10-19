@@ -94,6 +94,8 @@ Loads one image, so you can use the picture and know where it came from.
 
 **Choosing the image.** Click **Browse Image** to open your operating system's file chooser (the Explorer window on Windows, Finder on macOS, or zenity/kdialog on Linux). It shows image files, and it opens in the folder of the current image if there is one. Or type or paste the path into the field. Quotation marks are removed automatically, and `~` is the home folder. The same platform notes as the Folder Picker apply: on a remote or headless server, type the path instead.
 
+**Preview.** Click **Preview Image** to see the picture in the node. The preview is a plain RGB PNG, the same way ComfyUI's own image nodes show a picture. It has no alpha channel and no mask overlay. Transparent areas are shown on a white background, and large photos are scaled down to 1024 pixels for the preview only. The workflow itself still gets the full-size image. The preview also appears after Browse Image, and when a saved workflow loads.
+
 **Inputs**
 
 | Name | Type | Description |
@@ -257,8 +259,8 @@ Double-click into the folder you want, so you are inside it. Leave the file name
 **"Folder does not exist" appears in the console.**
 The path is set but the folder is not there. This is only a warning. Create the folder, or choose a different one.
 
-**The AHP Markdown Note is missing from the node menu.**
-One of its libraries is not installed. The ComfyUI console shows "Could not load ahp_markdown_note.py" with the name of the missing module. Install the libraries as shown under [Installation](#installation), then restart ComfyUI.
+**The AHP Markdown Note appears, but the preview says libraries are not installed.**
+The node always appears in the node list. Its three Markdown libraries are needed to render, and the message names them. Install them as shown under [Installation](#installation), then restart ComfyUI.
 
 **The preview does not update.**
 Click in the text box and type a character, or reload the browser tab. If it still does not update, restart ComfyUI so the browser script reloads.
