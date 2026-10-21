@@ -124,7 +124,7 @@ Loads one image, so you can use the picture and know where it came from.
 
 | Name | Type | Widget | Required | Description |
 |---|---|---|---|---|
-| `text` | STRING | Multi-line text box, with a live preview below it | No | The note, written in Markdown. The text box lays out RTL text correctly. |
+| `text` | STRING | Tabbed editor: **Plain text** and **Markdown** | No | The note, written in Markdown. The editor lays out RTL text correctly. |
 
 **Outputs**
 
@@ -133,19 +133,31 @@ Loads one image, so you can use the picture and know where it came from.
 | `markdown` | STRING | The note exactly as written. |
 | `html` | STRING | The note rendered to HTML. Every block has `dir="auto"`, so RTL text is laid out right-to-left. |
 
+**Tabs.** The node has two tabs. **Plain text** is the editor, where you write the note. **Markdown** shows the rendered note. The rendering is done by the same Python code that produces the `html` output, so the preview matches the workflow output. Switching to the Markdown tab renders the note, and the tab then updates as you type.
+
 **Supported Markdown**
 
 | Feature | Example |
 |---|---|
-| Headings, emphasis, links, images | `# Title`, `**bold**`, `*italic*`, `[link](https://example.com)` |
+| Headings (with anchors) | `# Title`, `## Section` |
+| Emphasis, strikethrough, highlight | `**bold**`, `*italic*`, `~~gone~~`, `==marked==` |
+| Subscript and superscript | `H~2~O`, `x^2^` |
+| Links, bare URLs, images | `[link](https://example.com)`, `https://example.com`, `![alt](picture.png)` |
+| Wikilinks (Obsidian style) | `[[Note]]`, `[[Note\|shown text]]` |
 | Lists and task lists | `- item`, `- [x] done`, `- [ ] to do` |
-| Quotes and code | `> quote`, `` `inline` ``, fenced code blocks with a language name |
-| Tables | `\| A \| B \|` with a header separator row |
-| Strikethrough | `~~text~~` |
+| Quotes | `> quote` |
+| Obsidian callouts | `> [!warning] Title` followed by the body |
+| Admonitions | `!!! note "Title"` followed by an indented body |
+| Code and fenced code | `` `inline` ``, fenced blocks with a language name |
+| Tables | a header row, a separator row, then the data rows |
 | Footnotes | `Text[^1]` and `[^1]: Note` |
-| Definition lists | A term on one line, then `: definition` on the next |
-| Math | `$e^{i\pi}+1=0$` inline, and `$$\frac{a}{b}$$` as a display block |
+| Definition lists | a term on one line, then `: definition` on the next |
+| Field lists | `:name: value` |
+| Math | `$e^{i\pi}+1=0$` inline, and `$$` on its own lines for a display block |
 | Horizontal rules | `---` |
+| Front matter | a `---` block at the very top, read and hidden as metadata |
+
+Not supported: emoji shortcodes such as `:smile:`, and the Obsidian embeds `![[file]]`. These need extra libraries that are not part of the pack yet.
 
 **Right-to-left and mixed text**
 
@@ -153,7 +165,7 @@ Loads one image, so you can use the picture and know where it came from.
 - Code blocks and math always stay left-to-right, even inside a right-to-left paragraph.
 - Lists, quotes and indents use the correct side for the direction.
 
-**Safety.** Raw HTML typed into a note is shown as text, not rendered. This keeps notes from running scripts or injecting markup.
+**Safety.** Raw HTML typed into a note is shown as text, not rendered. A workflow can be shared with its notes inside it, and rendering raw HTML would let a shared note run scripts on the machine that opens it. This is a deliberate choice, and the pack does not offer an option to turn it off.
 
 **Fonts.** The preview uses Vazirmatn if it is installed, and then falls back to Tahoma, Segoe UI, Noto Naskh Arabic and Noto Sans. Install Vazirmatn for the best Persian and Arabic display. It is a free font and is not bundled with the pack.
 

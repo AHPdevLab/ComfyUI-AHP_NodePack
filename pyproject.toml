@@ -12,6 +12,7 @@ dependencies = [
     "markdown-it-py>=3.0",
     "mdit-py-plugins>=0.4",
     "latex2mathml>=3.0",
+    "linkify-it-py>=2.0",
 ]
 keywords = ["comfyui", "comfyui-custom-node", "ahp", "folder-picker", "path"]
 classifiers = [
