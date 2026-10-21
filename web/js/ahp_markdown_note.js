@@ -14,7 +14,7 @@ const DEBOUNCE_MS = 300;
 const STYLE_ID = "ahp-markdown-note-style";
 
 const CSS = `
-.ahp-md-note { display: flex; flex-direction: column; gap: 6px; width: 100%; box-sizing: border-box; }
+.ahp-md-note { display: flex; flex-direction: column; gap: 6px; width: 100%; height: 100%; min-height: 0; box-sizing: border-box; }
 .ahp-md-tabs { display: flex; gap: 4px; }
 .ahp-md-tab {
   flex: 1;
@@ -30,9 +30,10 @@ const CSS = `
 .ahp-md-editor {
   box-sizing: border-box;
   width: 100%;
-  min-height: 220px;
-  resize: vertical;
-  padding: 8px 10px;
+  flex: 1 1 auto;
+  min-height: 120px;
+  resize: none;
+  padding: 12px 16px;
   border-radius: 6px;
   border: 1px solid #333;
   background: #1e1e1e;
@@ -45,10 +46,10 @@ const CSS = `
 .ahp-md-preview {
   box-sizing: border-box;
   width: 100%;
-  min-height: 220px;
-  max-height: 480px;
+  flex: 1 1 auto;
+  min-height: 120px;
   overflow: auto;
-  padding: 8px 10px;
+  padding: 12px 16px;
   border-radius: 6px;
   background: #1e1e1e;
   color: #e6e6e6;
@@ -90,7 +91,7 @@ const CSS = `
 .ahp-md th, .ahp-md td { border: 1px solid #555; padding: 4px 8px; }
 .ahp-md th { background: #2a2a2a; }
 .ahp-md hr { border: none; border-top: 1px solid #444; margin: 1em 0; }
-.ahp-md ul, .ahp-md ol { padding-inline-start: 1.6em; margin: 0.4em 0; }
+.ahp-md ul, .ahp-md ol { padding-inline-start: 2em; margin: 0.4em 10px; }
 .ahp-md li.task-list-item { list-style: none; }
 .ahp-md li.task-list-item input { margin-inline-end: 0.4em; pointer-events: none; }
 .ahp-md dt { font-weight: 600; margin-top: 0.4em; }
@@ -150,6 +151,10 @@ app.registerExtension({
       const initial = nativeText ? String(nativeText.value ?? "") : "";
       if (nativeText) {
         this.widgets.splice(this.widgets.indexOf(nativeText), 1);
+        // Remove the original textarea from the page too, or it stays visible.
+        nativeText.inputEl?.remove();
+        nativeText.element?.remove();
+        nativeText.onRemove?.();
       }
 
       const container = document.createElement("div");
